@@ -7,7 +7,7 @@
 
 import Foundation
 //MARK: -- Error
-enum NetworkError: Error {
+public enum NetworkError: Error {
     /// Indicates an invalid URL.
     case badURL
     ///Indicates a failure in the network request, storing the original error.
@@ -28,6 +28,6 @@ enum NetworkError: Error {
     case unknownError(statusCode: Int)
 }
 
-struct NetworkDecodingError: Error {
+public struct NetworkDecodingError: Error {
     let message: String
 }

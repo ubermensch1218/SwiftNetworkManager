@@ -7,7 +7,7 @@
 
 import Foundation
 //MARK: -- NetworkRequest Protocol
-protocol NetworkRequest {
+public protocol NetworkRequest {
     //The endpoint URL.
     var url: URL? { get }
     //The HTTP method (GET, POST, etc.).

@@ -8,7 +8,7 @@
 import Foundation
 
 
-enum ContentType: String {
+public enum ContentType: String {
     case json = "application/json"
     case xml = "application/xml"
     case formUrlEncoded = "application/x-www-form-urlencoded"

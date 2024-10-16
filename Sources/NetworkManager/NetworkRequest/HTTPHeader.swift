@@ -7,9 +7,9 @@
 
 import Foundation
 
-enum HTTPHeader: RawRepresentable, Hashable {
+public enum HTTPHeader: RawRepresentable, Hashable {
     // RawRepresentable conformance: Custom initializer to handle predefined and custom cases
-    init?(rawValue: String) {
+    public init?(rawValue: String) {
         switch rawValue.lowercased() {
         case "content-type":
             self = .contentType
@@ -19,13 +19,13 @@ enum HTTPHeader: RawRepresentable, Hashable {
             self = .custom(rawValue)
         }
     }
-    typealias RawValue = String
+    public typealias RawValue = String
     
     case contentType
     case authorization
     case custom(String)
     
-    var rawValue: String {
+    public var rawValue: String {
         switch self {
         case .contentType:
             return "Content-Type"

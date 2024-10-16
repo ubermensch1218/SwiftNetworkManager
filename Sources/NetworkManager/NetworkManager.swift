@@ -9,8 +9,8 @@ import UIKit
 
 
 @globalActor
-actor NetworkManager {
-    static let shared = NetworkManager()
+public actor NetworkManager {
+    public static let shared = NetworkManager()
     private let urlSession = URLSession.shared
     
     
