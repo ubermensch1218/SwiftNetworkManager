@@ -20,16 +20,12 @@ actor NetworkManager {
     func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async throws -> T {
         let urlRequest = try request.urlRequest()
         let (data, response) = try await urlSession.data(for: urlRequest)
-        //print("performs---")
-        //print(String(data: data, encoding: .utf8)!)
         try processResponse(response: response)
         return try decodeData(data: data, type: T.self)
     }
     func send(_ request: NetworkRequest) async throws {
         let urlRequest = try request.urlRequest()
         let (_, response) = try await urlSession.data(for: urlRequest)
-        //print("performs---")
-        //print(String(data: data, encoding: .utf8)!)
         return try processResponse(response: response)
     }
     
