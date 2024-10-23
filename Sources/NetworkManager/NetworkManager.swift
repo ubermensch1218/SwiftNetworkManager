@@ -9,7 +9,7 @@ import UIKit
 
 
 @globalActor
-public actor NetworkManager {
+public actor NetworkManager : NetworkLayerProtocol {
     public static let shared = NetworkManager()
     private let urlSession = URLSession.shared
     
@@ -17,13 +17,13 @@ public actor NetworkManager {
     private init(){}
     
     
-    func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async throws -> T {
+    public func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async throws -> T {
         let urlRequest = try request.urlRequest()
         let (data, response) = try await urlSession.data(for: urlRequest)
         try processResponse(response: response)
         return try decodeData(data: data, type: T.self)
     }
-    func send(_ request: NetworkRequest) async throws {
+    public func send(_ request: NetworkRequest) async throws {
         let urlRequest = try request.urlRequest()
         let (_, response) = try await urlSession.data(for: urlRequest)
         return try processResponse(response: response)
@@ -55,7 +55,7 @@ public actor NetworkManager {
         }
     }
     
-    func downloadFile(from url: URL) async throws -> URL {
+    public func downloadFile(from url: URL) async throws -> URL {
         let (localURL, response) = try await urlSession.download(from: url)
         try processResponse(response: response)
         return localURL
@@ -63,7 +63,7 @@ public actor NetworkManager {
 }
 //Image Downloading and Caching
 extension NetworkManager {
-    func downloadImage(from url: URL, cacheEnabled: Bool = true) async -> Result<UIImage, NetworkError> {
+    public func downloadImage(from url: URL, cacheEnabled: Bool = true) async -> Result<UIImage, NetworkError> {
         do {
             if cacheEnabled, let cachedImage = try getCachedImage(for: url) {
                 return .success(cachedImage)
