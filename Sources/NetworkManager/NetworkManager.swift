@@ -16,78 +16,166 @@ public actor NetworkManager : NetworkLayerProtocol {
     
     private init(){}
     
-    
-    public func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async throws -> T {
-        let urlRequest = try request.urlRequest()
-        let (data, response) = try await urlSession.data(for: urlRequest)
-        try processResponse(response: response)
-        return try decodeData(data: data, type: T.self)
-    }
-    public func send(_ request: NetworkRequest) async throws {
-        let urlRequest = try request.urlRequest()
-        let (_, response) = try await urlSession.data(for: urlRequest)
-        return try processResponse(response: response)
-    }
-    
-    private func decodeData<T: Decodable>(data: Data, type: T.Type) throws -> T {
+    public func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async -> Result<T, NetworkError>{
+        let urlRequest : URLRequest
         do {
-            let decodedObject = try JSONDecoder().decode(T.self, from: data)
-            return decodedObject
-        } catch let decodingError {
-            throw NetworkError.decodingFailed(decodingError)
+            urlRequest = try request.urlRequest()
+        } catch {
+            return .failure(error as? NetworkError ?? .badURL)
+        }
+        // Perform network request
+        do {
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            
+            // Process response
+            if let error = processResponse(response: response) {
+                return .failure(error)
+            }
+            
+            // Decode data
+            return decodeData(data: data, type: T.self)
+            
+        } catch {
+            return .failure(.requestFailed(error))
         }
     }
     
-    private func processResponse(response: URLResponse?) throws {
+    private func decodeData<T: Decodable>(data: Data, type: T.Type) -> Result<T, NetworkError> {
+        do {
+            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            return .success(decodedObject)
+        } catch let decodingError {
+            return .failure(.decodingFailed(decodingError))
+        }
+    }
+    private func processResponse(response: URLResponse?) -> NetworkError? {
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw NetworkError.invalidResponse
+            return .invalidResponse
         }
         
         switch httpResponse.statusCode {
         case 200...299:
-            return
+            return nil
         case 404:
-            throw NetworkError.notFound
+            return .notFound
         case 500:
-            throw NetworkError.internalServerError
+            return .internalServerError
         default:
-            throw NetworkError.unknownError(statusCode: httpResponse.statusCode)
+            return .unknownError(statusCode: httpResponse.statusCode)
         }
     }
     
-    public func downloadFile(from url: URL) async throws -> URL {
-        let (localURL, response) = try await urlSession.download(from: url)
-        try processResponse(response: response)
-        return localURL
+    // Convert send function to use Result
+    public func send(_ request: NetworkRequest) async -> Result<Void, NetworkError> {
+        // First create URLRequest
+        let urlRequest: URLRequest
+        do {
+            urlRequest = try request.urlRequest()
+        } catch {
+            return .failure(error as? NetworkError ?? .badURL)
+        }
+        
+        // Perform network request
+        do {
+            let (_, response) = try await urlSession.data(for: urlRequest)
+            
+            // Process response
+            if let error = processResponse(response: response) {
+                return .failure(error)
+            }
+            
+            return .success(())
+            
+        } catch {
+            return .failure(.requestFailed(error))
+        }
     }
+    
+    
+    
 }
 //Image Downloading and Caching
 extension NetworkManager {
-    public func downloadImage(from url: URL, cacheEnabled: Bool = true) async -> Result<UIImage, NetworkError> {
+    
+    
+    // Convert downloadFile to use Result
+    private func downloadFile(from url: URL) async -> Result<URL, NetworkError> {
         do {
-            if cacheEnabled, let cachedImage = try getCachedImage(for: url) {
-                return .success(cachedImage)
+            let (localURL, response) = try await urlSession.download(from: url)
+            
+            if let error = processResponse(response: response) {
+                return .failure(error)
             }
             
-            let localURL = try await NetworkManager.shared.downloadFile(from: url)
-            let imageData = try Data(contentsOf: localURL)
-            if let image = UIImage(data: imageData) {
+            return .success(localURL)
+        } catch {
+            return .failure(.requestFailed(error))
+        }
+    }
+    // Update image downloading to use the new Result-based methods
+    public func downloadImage(from url: URL, cacheEnabled: Bool = true) async -> Result<UIImage, NetworkError> {
+        if cacheEnabled {
+            // Check cache first
+            let cachedResult = getCachedImage(for: url)
+            switch cachedResult {
+            case .success(let image):
+                return .success(image)
+            case .failure(let error):
+                // Only proceed with download if the error is dataNotFound
+                guard case .dataNotFound = error else {
+                    return .failure(error)
+                }
+            }
+        }
+        
+        // Download the image if not cached or cache is disabled
+        let downloadResult = await downloadFile(from: url)
+        
+        switch downloadResult {
+        case .success(let localURL):
+            do {
+                let imageData = try Data(contentsOf: localURL)
+                
+                guard let image = UIImage(data: imageData) else {
+                    return .failure(.decodingFailed(
+                        NetworkDecodingError(message: "Failed to create image from downloaded data")
+                    ))
+                }
+                
                 if cacheEnabled {
                     cacheImage(imageData, for: url)
                 }
+                
                 return .success(image)
-            } else {
-                return .failure(.decodingFailed(NetworkDecodingError(message: "Failed to decode image data")))
+            } catch {
+                return .failure(.dataNotFound)
             }
-        } catch {
-            return .failure(error as? NetworkError ?? .invalidResponse)
+            
+        case .failure(let error):
+            return .failure(error)
         }
     }
     
-    private func cacheImage(_ imageData: Data, for url: URL) {
-        let cachedResponse = CachedURLResponse(response: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, data: imageData)
-        URLCache.shared.storeCachedResponse(cachedResponse, for: URLRequest(url: url))
-        checkAndClearCache()
+    // Helper method to maintain cache size
+    private func cacheImage(_ imageData: Data, for url: URL) -> Result<Void, NetworkError> {
+        do {
+            guard let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            ) else {
+                return .failure(.invalidResponse)
+            }
+            
+            let cachedResponse = CachedURLResponse(response: response, data: imageData)
+            URLCache.shared.storeCachedResponse(cachedResponse, for: URLRequest(url: url))
+            
+            checkAndClearCache()
+            return .success(())
+        } catch {
+            return .failure(.requestFailed(error))
+        }
     }
     
     private func checkAndClearCache() {
@@ -98,12 +186,23 @@ extension NetworkManager {
         }
     }
     
-    private func getCachedImage(for url: URL) throws -> UIImage? {
-        if let cachedResponse = URLCache.shared.cachedResponse(for: URLRequest(url: url)),
-           let image = UIImage(data: cachedResponse.data) {
-            return image
+    // Convert getCachedImage to use Result with additional error handling
+    private func getCachedImage(for url: URL) -> Result<UIImage, NetworkError> {
+        // Check if we have a cached response
+        guard let cachedResponse = URLCache.shared.cachedResponse(for: URLRequest(url: url)) else {
+            return .failure(.dataNotFound)
         }
-        return nil
+        
+        // Try to create an image from the cached data
+        guard let image = UIImage(data: cachedResponse.data) else {
+            // If we have data but can't create an image, it's a decoding error
+            return .failure(.decodingFailed(
+                NetworkDecodingError(message: "Could not create image from cached data")
+            ))
+        }
+        
+        return .success(image)
     }
+    
 }
 

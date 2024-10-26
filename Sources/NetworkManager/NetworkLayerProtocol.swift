@@ -8,5 +8,5 @@
 import Foundation
 
 public protocol NetworkLayerProtocol {
-    func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async throws -> T
+    func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async -> Result<T, NetworkError>
 }
