@@ -62,40 +62,6 @@ public actor NetworkManager : NetworkLayerProtocol {
             throw NetworkError.requestFailed(error)
         }
     }
-    
-    private func decodeData<T: Decodable>(data: Data, type: T.Type) -> Result<T, NetworkError> {
-        do {
-            let decodedObject = try JSONDecoder().decode(T.self, from: data)
-            return .success(decodedObject)
-        } catch let decodingError {
-            return .failure(.decodingFailed(decodingError))
-        }
-    }
-    private func decodeData<T: Decodable>(data: Data, type: T.Type) throws -> T {
-        do {
-            let decodedObject = try JSONDecoder().decode(T.self, from: data)
-            return decodedObject
-        } catch let decodingError {
-            throw NetworkError.decodingFailed(decodingError)
-        }
-    }
-    private func processResponse(response: URLResponse?) -> NetworkError? {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return .invalidResponse
-        }
-        
-        switch httpResponse.statusCode {
-        case 200...299:
-            return nil
-        case 404:
-            return .notFound
-        case 500:
-            return .internalServerError
-        default:
-            return .unknownError(statusCode: httpResponse.statusCode)
-        }
-    }
-    
     // Convert send function to use Result
     public func send(_ request: NetworkRequest) async -> Result<Void, NetworkError> {
         // First create URLRequest
@@ -146,6 +112,42 @@ public actor NetworkManager : NetworkLayerProtocol {
         }
     }
     
+    
+}
+//private Back parts
+extension NetworkManager {
+    private func decodeData<T: Decodable>(data: Data, type: T.Type) -> Result<T, NetworkError> {
+        do {
+            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            return .success(decodedObject)
+        } catch let decodingError {
+            return .failure(.decodingFailed(decodingError))
+        }
+    }
+    private func decodeData<T: Decodable>(data: Data, type: T.Type) throws -> T {
+        do {
+            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            return decodedObject
+        } catch let decodingError {
+            throw NetworkError.decodingFailed(decodingError)
+        }
+    }
+    private func processResponse(response: URLResponse?) -> NetworkError? {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return .invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200...299:
+            return nil
+        case 404:
+            return .notFound
+        case 500:
+            return .internalServerError
+        default:
+            return .unknownError(statusCode: httpResponse.statusCode)
+        }
+    }
     
 }
 //Image Downloading and Caching
