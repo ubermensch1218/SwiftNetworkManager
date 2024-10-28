@@ -39,32 +39,29 @@ public actor NetworkManager : NetworkLayerProtocol {
             return .failure(.requestFailed(error))
         }
     }
-    
-    private func decodeData<T: Decodable>(data: Data, type: T.Type) -> Result<T, NetworkError> {
+    public func perform<T: Decodable>(_ request: NetworkRequest, decodeTo type: T.Type) async throws -> T {
+        let urlRequest : URLRequest
         do {
-            let decodedObject = try JSONDecoder().decode(T.self, from: data)
-            return .success(decodedObject)
-        } catch let decodingError {
-            return .failure(.decodingFailed(decodingError))
+            urlRequest = try request.urlRequest()
+        } catch {
+            throw error as? NetworkError ?? .badURL
+        }
+        // Perform network request
+        do {
+            let (data, response) = try await urlSession.data(for: urlRequest)
+            
+            // Process response
+            if let error = processResponse(response: response) {
+                throw error
+            }
+            
+            // Decode data
+            return try decodeData(data: data, type: T.self)
+            
+        } catch {
+            throw NetworkError.requestFailed(error)
         }
     }
-    private func processResponse(response: URLResponse?) -> NetworkError? {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return .invalidResponse
-        }
-        
-        switch httpResponse.statusCode {
-        case 200...299:
-            return nil
-        case 404:
-            return .notFound
-        case 500:
-            return .internalServerError
-        default:
-            return .unknownError(statusCode: httpResponse.statusCode)
-        }
-    }
-    
     // Convert send function to use Result
     public func send(_ request: NetworkRequest) async -> Result<Void, NetworkError> {
         // First create URLRequest
@@ -90,8 +87,67 @@ public actor NetworkManager : NetworkLayerProtocol {
             return .failure(.requestFailed(error))
         }
     }
+    public func send(_ request: NetworkRequest) async throws-> Void {
+        // First create URLRequest
+        let urlRequest: URLRequest
+        do {
+            urlRequest = try request.urlRequest()
+        } catch {
+            throw error as? NetworkError ?? .badURL
+        }
+        
+        // Perform network request
+        do {
+            let (_, response) = try await urlSession.data(for: urlRequest)
+            
+            // Process response
+            if let error = processResponse(response: response) {
+                throw error
+            }
+            
+            return
+            
+        } catch {
+            throw NetworkError.requestFailed(error)
+        }
+    }
     
     
+}
+//private Back parts
+extension NetworkManager {
+    private func decodeData<T: Decodable>(data: Data, type: T.Type) -> Result<T, NetworkError> {
+        do {
+            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            return .success(decodedObject)
+        } catch let decodingError {
+            return .failure(.decodingFailed(decodingError))
+        }
+    }
+    private func decodeData<T: Decodable>(data: Data, type: T.Type) throws -> T {
+        do {
+            let decodedObject = try JSONDecoder().decode(T.self, from: data)
+            return decodedObject
+        } catch let decodingError {
+            throw NetworkError.decodingFailed(decodingError)
+        }
+    }
+    private func processResponse(response: URLResponse?) -> NetworkError? {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return .invalidResponse
+        }
+        
+        switch httpResponse.statusCode {
+        case 200...299:
+            return nil
+        case 404:
+            return .notFound
+        case 500:
+            return .internalServerError
+        default:
+            return .unknownError(statusCode: httpResponse.statusCode)
+        }
+    }
     
 }
 //Image Downloading and Caching
